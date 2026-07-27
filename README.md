@@ -37,7 +37,7 @@ L'application sera disponible sur **http://localhost:5173**
 ### Build de production
 
 ```bash
-npm run build
+npm run bui
 ```
 
 Le bundle sera généré dans le dossier `dist/`.

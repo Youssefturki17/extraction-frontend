@@ -3,8 +3,28 @@ import { Button } from '../ui/Button'
 import { Badge } from '../ui/Badge'
 
 export function ExtractionResult({ result, onReset }) {
-  const handleDownload = () => {
-    alert('Téléchargement simulé — le fichier JSON sera disponible via l\'API backend.')
+  const handleDownload = async () => {
+    if (!result.jobId) {
+      alert('ID de tâche manquant')
+      return
+    }
+    try {
+      const res = await fetch(`/api/result/${result.jobId}`)
+      if (!res.ok) throw new Error('Erreur HTTP')
+      const data = await res.json()
+      
+      const blob = new Blob([JSON.stringify(data.result, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${result.filename.split('.')[0]}_${result.model}_result.json`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      alert('Erreur lors du téléchargement : ' + e.message)
+    }
   }
 
   return (

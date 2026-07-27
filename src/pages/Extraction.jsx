@@ -12,7 +12,7 @@ export default function Extraction() {
     file, setFile,
     model, setModel,
     progress, status,
-    result,
+    result, errorMsg,
     startExtraction,
     reset,
   } = useExtraction()
@@ -65,6 +65,22 @@ export default function Extraction() {
       {status === 'running' && (
         <Card>
           <ExtractionProgress progress={progress} model={model} />
+        </Card>
+      )}
+
+      {/* Error */}
+      {status === 'error' && (
+        <Card>
+          <div className="flex flex-col items-center py-6 text-center">
+            <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-3">
+              <span className="text-xl font-bold">!</span>
+            </div>
+            <h3 className="text-lg font-bold text-gray-800">Échec de l'extraction</h3>
+            <p className="text-sm text-gray-500 mt-2 max-w-md">{errorMsg}</p>
+            <Button variant="secondary" className="mt-4" onClick={reset}>
+              Réessayer
+            </Button>
+          </div>
         </Card>
       )}
 

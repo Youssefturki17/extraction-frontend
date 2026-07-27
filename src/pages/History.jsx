@@ -1,21 +1,57 @@
-import { useState, useMemo } from 'react'
-import { FileText, Search, Download, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { FileText, Search, Download, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Table, Tr, Td } from '../components/ui/Table'
-import { extractions } from '../mock/extractions'
 
 const PAGE_SIZE = 10
+const MODELS  = ['Tous', 'docling', 'mineru', 'paddle']
+const STATUSES = ['Tous', 'done', 'processing', 'error']
 
-const MODELS  = ['Tous', 'Docling', 'MinerU', 'PaddleOCR']
-const STATUSES = ['Tous', 'succès', 'erreur']
+const API_BASE = '/api'
 
 export default function History() {
   const [search, setSearch]         = useState('')
   const [modelFilter, setModelFilter] = useState('Tous')
   const [statusFilter, setStatusFilter] = useState('Tous')
   const [page, setPage]             = useState(1)
+
+  const [extractions, setExtractions] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [errorMsg, setErrorMsg] = useState(null)
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        setLoading(true)
+        const res = await fetch(`${API_BASE}/history`)
+        if (!res.ok) throw new Error('Erreur lors du chargement de l\'historique')
+        const data = await res.json()
+        
+        const mapped = (data.history || []).map(j => ({
+          id: j.job_id,
+          filename: j.filename,
+          model: j.model,
+          status: j.status,
+          tables: j.nb_tableaux || 0,
+          words: j.nb_mots || 0,
+          duration: j.duration_seconds ? `${Math.floor(j.duration_seconds / 60)}m ${Math.round(j.duration_seconds % 60)}s` : '—',
+          date: j.created_at ? new Date(j.created_at).toLocaleDateString('fr-FR', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+          }) : '—',
+          raw: j
+        }))
+        setExtractions(mapped)
+      } catch (err) {
+        setErrorMsg(err.message)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchHistory()
+  }, [])
 
   const filtered = useMemo(() => {
     return extractions.filter((ex) => {
@@ -24,13 +60,39 @@ export default function History() {
       const matchStatus = statusFilter === 'Tous' || ex.status === statusFilter
       return matchSearch && matchModel && matchStatus
     })
-  }, [search, modelFilter, statusFilter])
+  }, [search, modelFilter, statusFilter, extractions])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const handleExport = () => {
-    alert('Export CSV simulé — la fonctionnalité sera connectée à l\'API backend.')
+    if (filtered.length === 0) return
+
+    const headers = ['ID', 'Fichier', 'Modele', 'Statut', 'Tableaux', 'Mots', 'Duree_sec', 'Date']
+    const rows = filtered.map(ex => [
+      ex.id, 
+      ex.filename, 
+      ex.model, 
+      ex.status, 
+      ex.tables, 
+      ex.words, 
+      ex.raw.duration_seconds || 0, 
+      ex.date
+    ])
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.setAttribute('href', url)
+    link.setAttribute('download', `export_extractions_${new Date().toISOString().slice(0,10)}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   }
 
   const handleFilter = (setter) => (e) => {
@@ -43,9 +105,7 @@ export default function History() {
       {/* Toolbar */}
       <Card>
         <div className="flex flex-col md:flex-row gap-3 items-start md:items-center justify-between">
-          {/* Filters */}
           <div className="flex flex-wrap gap-3 items-center flex-1">
-            {/* Search */}
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
@@ -57,7 +117,6 @@ export default function History() {
               />
             </div>
 
-            {/* Model filter */}
             <select
               value={modelFilter}
               onChange={handleFilter(setModelFilter)}
@@ -67,7 +126,6 @@ export default function History() {
               {MODELS.map((m) => <option key={m}>{m}</option>)}
             </select>
 
-            {/* Status filter */}
             <select
               value={statusFilter}
               onChange={handleFilter(setStatusFilter)}
@@ -82,7 +140,7 @@ export default function History() {
             </span>
           </div>
 
-          <Button variant="secondary" size="sm" onClick={handleExport}>
+          <Button variant="secondary" size="sm" onClick={handleExport} disabled={filtered.length === 0}>
             <Download size={13} />
             Exporter CSV
           </Button>
@@ -91,43 +149,62 @@ export default function History() {
 
       {/* Table */}
       <Card padding={false}>
-        <Table
-          headers={['Fichier', 'Modèle', 'Tableaux', 'Mots', 'Durée', 'Statut', 'Date']}
-        >
-          {paginated.length === 0 ? (
-            <tr>
-              <td colSpan={7} className="text-center py-12 text-sm text-gray-400">
-                Aucune extraction ne correspond aux filtres sélectionnés.
-              </td>
-            </tr>
-          ) : (
-            paginated.map((ex) => (
-              <Tr key={ex.id}>
-                <Td>
-                  <div className="flex items-center gap-2">
-                    <FileText size={13} className="text-primary-300 flex-shrink-0" />
-                    <span className="font-medium text-gray-800 truncate max-w-xs text-xs">
-                      {ex.filename}
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-12">
+            <Loader2 size={32} className="text-primary-600 animate-spin mb-4" />
+            <p className="text-sm text-gray-500">Chargement de l'historique...</p>
+          </div>
+        ) : errorMsg ? (
+          <div className="flex flex-col items-center justify-center py-12">
+            <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-3">
+              <span className="text-xl font-bold">!</span>
+            </div>
+            <p className="text-sm text-gray-800 font-medium">{errorMsg}</p>
+          </div>
+        ) : (
+          <Table
+            headers={['Fichier', 'Modèle', 'Tableaux', 'Mots', 'Durée', 'Statut', 'Date']}
+          >
+            {paginated.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="text-center py-12 text-sm text-gray-400">
+                  Aucune extraction ne correspond aux filtres sélectionnés.
+                </td>
+              </tr>
+            ) : (
+              paginated.map((ex) => (
+                <Tr key={ex.id}>
+                  <Td>
+                    <div className="flex items-center gap-2">
+                      <FileText size={13} className="text-primary-300 flex-shrink-0" />
+                      <span className="font-medium text-gray-800 truncate max-w-xs text-xs">
+                        {ex.filename}
+                      </span>
+                    </div>
+                  </Td>
+                  <Td>
+                    <span className="text-xs font-medium text-primary-700 bg-primary-50 px-2 py-0.5 rounded-lg">
+                      {ex.model}
                     </span>
-                  </div>
-                </Td>
-                <Td>
-                  <span className="text-xs font-medium text-primary-700 bg-primary-50 px-2 py-0.5 rounded-lg">
-                    {ex.model}
-                  </span>
-                </Td>
-                <Td className="font-semibold text-center">{ex.tables}</Td>
-                <Td>{ex.words.toLocaleString('fr-FR')}</Td>
-                <Td className="text-gray-500">{ex.duration}</Td>
-                <Td><Badge label={ex.status} variant={ex.status} /></Td>
-                <Td className="text-gray-400 text-xs whitespace-nowrap">{ex.date}</Td>
-              </Tr>
-            ))
-          )}
-        </Table>
+                  </Td>
+                  <Td className="font-semibold text-center">{ex.tables}</Td>
+                  <Td>{ex.words.toLocaleString('fr-FR')}</Td>
+                  <Td className="text-gray-500">{ex.duration}</Td>
+                  <Td>
+                    <Badge 
+                      label={ex.status} 
+                      variant={ex.status === 'done' ? 'succès' : ex.status === 'processing' ? 'info' : 'erreur'} 
+                    />
+                  </Td>
+                  <Td className="text-gray-400 text-xs whitespace-nowrap">{ex.date}</Td>
+                </Tr>
+              ))
+            )}
+          </Table>
+        )}
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {totalPages > 1 && !loading && !errorMsg && (
           <div className="flex items-center justify-between px-5 py-3 border-t border-gray-50">
             <p className="text-xs text-gray-400">
               Page {page} sur {totalPages}
